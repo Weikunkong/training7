@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>gym track - 健身记录器</title>
+  
+  <!-- iOS 添加到主屏幕设置 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="gym track">
+  <link rel="apple-touch-icon" sizes="180x180" href="gymtrack-icon.png">
+  
+  <style>
+    /* 全局背景和字体 */
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    /* 容器样式：登录页和主页面均使用 */
+    .container {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      width: 100%;
+      max-width: 900px;
+      margin: auto;
+    }
+    /* 登录界面专用：较小的宽度 */
+    #loginContainer {
+      max-width: 400px;
+    }
+    h1, h2 {
+      text-align: center;
+      color: #333;
+    }
+    /* 输入框样式：居中、圆角、内边距 */
+    input[type="text"],
+    input[type="password"] {
+      width: 80%;
+      display: block;
+      margin: 15px auto;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    /* 按钮样式：圆角、居中、悬停变色 */
+    button {
+      background-color: #74ebd5;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 25px;
+      cursor: pointer;
+      display: block;
+      margin: 15px auto;
+    }
+    button:hover {
+      background-color: #ACB6E5;
+    }
+    a {
+      color: #74ebd5;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    /* 隐藏样式 */
+    .hidden {
+      display: none;
+    }
+    /* 任务列表及仪表盘样式 */
+    .task {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      background: #f9f9f9;
+    }
+    .completed {
+      background-color: #ccc;
+      color: #666;
+      text-decoration: line-through;
+    }
+    .selectors {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 20px;
+    }
+    .selectors select {
+      padding: 5px;
+      font-size: 16px;
+    }
+    .logout {
+      float: right;
+      background-color: #e64c3b;
+    }
+    .logout:hover {
+      background-color: #c0392b;
+    }
+    .notice {
+      font-size: 0.9em;
+      color: red;
+      margin-top: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- 登录／注册界面 -->
+  <div class="container" id="loginContainer">
+    <h1>健身计划跟踪系统</h1>
+    <div id="loginForm">
+      <h2>登录</h2>
+      <input type="text" id="loginUsername" placeholder="用户名">
+      <input type="password" id="loginPassword" placeholder="密码">
+      <button onclick="login()">登录</button>
+      <p style="text-align:center;">没有账号？<a href="#" onclick="showRegister()">注册</a></p>
+    </div>
+    <div id="registerForm" class="hidden">
+      <h2>注册</h2>
+      <input type="text" id="registerUsername" placeholder="用户名">
+      <input type="password" id="registerPassword" placeholder="密码">
+      <button onclick="register()">注册</button>
+      <p style="text-align:center;">已有账号？<a href="#" onclick="showLogin()">登录</a></p>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div class="container hidden" id="dashboard">
+    <button class="logout" onclick="logout()">退出</button>
+    <h1>自然无敌增肌计划</h1>
+    <div class="selectors">
+      <div>
+        <label for="cycleSelect">周期:</label>
+        <select id="cycleSelect" onchange="onCycleOrLoopChange()"></select>
+      </div>
+      <div>
+        <label for="loopSelect">循环:</label>
+        <select id="loopSelect" onchange="onCycleOrLoopChange()"></select>
+      </div>
+      <div>
+        <label for="daySelect">训练日:</label>
+        <select id="daySelect" onchange="updateDashboard()"></select>
+      </div>
+    </div>
+    <div id="dateDisplay" style="text-align:center;margin-bottom:20px;"></div>
+    <div id="taskList"></div>
+  </div>
+
+  <script>
+    /*******************************************
+     * 全局常量：训练日固定分布
+     *******************************************/
+    const dayMapping = [
+      { day: 1, label: '肩1' },
+      { day: 2, label: '胸1' },
+      { day: 3, label: '背1' },
+      { day: 4, label: '休息日' },
+      { day: 5, label: '腿' },
+      { day: 6, label: '肩2' },
+      { day: 7, label: '胸2' },
+      { day: 8, label: '休息日' },
+      { day: 9, label: '背2' }
+    ];
+
+    /*******************************************
+     * 用户注册/登录及数据持久化
+     *******************************************/
+    let currentUser = null;
+    let users = JSON.parse(localStorage.getItem('users')) || {};
+
+    function saveUsers() {
+      localStorage.setItem('users', JSON.stringify(users));
+    }
+
+    function showLogin() {
+      document.getElementById('loginForm').classList.remove('hidden');
+      document.getElementById('registerForm').classList.add('hidden');
+    }
+
+    function showRegister() {
+      document.getElementById('loginForm').classList.add('hidden');
+      document.getElementById('registerForm').classList.remove('hidden');
+    }
+
+    function register() {
+      let username = document.getElementById('registerUsername').value.trim();
+      let password = document.getElementById('registerPassword').value.trim();
+      if (username && password) {
+        if (users[username]) {
+          alert('用户名已存在，请更换！');
+        } else {
+          users[username] = { password: password, records: {} };
+          saveUsers();
+          alert('注册成功，请登录');
+          showLogin();
+        }
+      } else {
+        alert('请输入用户名和密码');
+      }
+    }
+
+    function login() {
+      let username = document.getElementById('loginUsername').value.trim();
+      let password = document.getElementById('loginPassword').value.trim();
+      if (users[username] && users[username].password === password) {
+        currentUser = username;
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        initializeSelectors();
+        updateDashboard();
+      } else {
+        alert('用户名或密码错误');
+      }
+    }
+
+    function logout() {
+      currentUser = null;
+      document.getElementById('dashboard').classList.add('hidden');
+      document.getElementById('loginContainer').classList.remove('hidden');
+    }
+
+    /*******************************************
+     * 初始化周期、循环、训练日下拉菜单
+     *******************************************/
+    function initializeSelectors() {
+      let cycleSelect = document.getElementById('cycleSelect');
+      cycleSelect.innerHTML = '';
+      for (let i = 1; i <= 12; i++) {
+        let opt = document.createElement('option');
+        opt.value = i;
+        opt.text = '周期' + i;
+        cycleSelect.appendChild(opt);
+      }
+      let loopSelect = document.getElementById('loopSelect');
+      loopSelect.innerHTML = '';
+      let loops = [
+        { value: 1, text: '循环1' },
+        { value: 2, text: '循环2' },
+        { value: 3, text: '循环3' },
+        { value: 4, text: '循环4' },
+        { value: 5, text: '减载周' }
+      ];
+      loops.forEach(item => {
+        let opt = document.createElement('option');
+        opt.value = item.value;
+        opt.text = item.text;
+        loopSelect.appendChild(opt);
+      });
+      let daySelect = document.getElementById('daySelect');
+      daySelect.innerHTML = '';
+      dayMapping.forEach(item => {
+        let opt = document.createElement('option');
+        opt.value = item.day;
+        opt.text = "第" + item.day + "天 (" + item.label + ")";
+        daySelect.appendChild(opt);
+      });
+    }
+
+    /*******************************************
+     * 训练计划数据
+     *******************************************/
+    const baseExercises = {
+      '肩1': [
+        { 
+          name: '哑铃推肩', 
+          sets: [
+            { weight: 16, reps: 12 },
+            { weight: 18, reps: 10 },
+            { weight: 20, reps: 8 },
+            { weight: 22, reps: 6, note: '（3组）' },
+            { weight: 24, reps: 4 }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '哑铃侧平举', 
+          sets: [
+            { weight: 6, reps: 12 },
+            { weight: 8, reps: 10 },
+            { weight: 10, reps: 8 },
+            { weight: 12, reps: 6, note: '（3组）' },
+            { weight: 14, reps: 4 }
+          ],
+          weightIncrement: 2
+        }
+      ],
+      '肩1_rear': [
+        { 
+          name: '后束', 
+          sets: [
+            { weight: 42.5, reps: 12 },
+            { weight: 50, reps: 10 },
+            { weight: 57.5, reps: 8 },
+            { weight: 65, reps: 6, note: '（3组）' },
+            { weight: 72.5, reps: 4 }
+          ],
+          weightIncrement: 2.5
+        }
+      ],
+      '胸1': [
+        { 
+          name: '哑铃卧推', 
+          sets: [
+            { weight: 20, reps: 12 },
+            { weight: 24, reps: 10 },
+            { weight: 26, reps: 8 },
+            { weight: 28, reps: 6, note: '（3组）' },
+            { weight: 30, reps: 4 }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '固定上斜卧推', 
+          sets: [
+            { weight: 26, reps: 6, note: '（2组）' }
+          ],
+          weightIncrement: 2
+        }
+      ],
+      '背1': [
+        { 
+          name: '引体向上（第一组）', 
+          sets: [
+            { weight: 5, reps: 3 },
+            { weight: 2.5, reps: 4 },
+            { weight: 0, reps: 6, note: '自重' }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '引体向上（第二组）', 
+          sets: [
+            { weight: 5, reps: 2 },
+            { weight: 2.5, reps: 3 },
+            { weight: 0, reps: 5, note: '自重' },
+            { note: '自重极限' }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '器械杠铃划船', 
+          sets: [
+            { weight: 20, reps: 12 },
+            { weight: 22.5, reps: 10 },
+            { weight: 25, reps: 8, note: '（3组）' },
+            { weight: 27.5, reps: 6 }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '宽距坐姿划船', 
+          sets: [
+            { weight: 17.5, reps: 12 },
+            { weight: 20, reps: 10 },
+            { weight: 22.5, reps: 8, note: '（3组）' },
+            { weight: 25, reps: 6 }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '三头下压', 
+          sets: [
+            { weight: 70, reps: 6, note: '（3组）' }
+          ],
+          weightIncrement: 2.5
+        }
+      ],
+      '休息日': [
+        { name: '休息日', sets: [ { note: '休息，不训练' } ] }
+      ],
+      '肩2': [
+        { 
+          name: '哑铃推肩', 
+          sets: [
+            { weight: 16, reps: 12 },
+            { weight: 18, reps: 10 },
+            { weight: 20, reps: 8 },
+            { weight: 22, reps: 6 },
+            { weight: 24, reps: 4 }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '哑铃侧平举', 
+          sets: [
+            { weight: 6, reps: 12 },
+            { weight: 8, reps: 10 },
+            { weight: 10, reps: 8 },
+            { weight: 12, reps: 6 },
+            { weight: 14, reps: 4 }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '后束', 
+          sets: [
+            { weight: 42.5, reps: 12 },
+            { weight: 50, reps: 10 },
+            { weight: 57.5, reps: 8 },
+            { weight: 65, reps: 6 },
+            { weight: 72.5, reps: 4 }
+          ],
+          weightIncrement: 2.5
+        }
+      ],
+      '胸2': [
+        { 
+          name: '哑铃卧推', 
+          sets: [
+            { weight: 20, reps: 12 },
+            { weight: 24, reps: 10 },
+            { weight: 26, reps: 8 },
+            { weight: 28, reps: 6 },
+            { weight: 30, reps: 4 }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '固定上斜卧推', 
+          sets: [
+            { weight: 24, reps: 8, note: '（2组）' }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '二头', 
+          sets: [
+            { weight: 10, reps: 11 },
+            { weight: 12, reps: 9 },
+            { weight: 14, reps: 7 },
+            { weight: 16, reps: 5, note: '（3组）' }
+          ],
+          weightIncrement: 2
+        },
+        { 
+          name: '腹肌', 
+          sets: [
+            { weight: 15, reps: 12 },
+            { weight: 17.5, reps: 10 },
+            { weight: 20, reps: 8 },
+            { weight: 22.5, reps: 6, note: '（3组）' },
+            { weight: 25, reps: 4 }
+          ],
+          weightIncrement: 2.5
+        }
+      ],
+      '背2': [
+        { 
+          name: '引体向上',
+          dynamicPullup: true,
+          baseReps: 5,
+          setsCount: 5
+        },
+        { 
+          name: '器械杠铃划船', 
+          sets: [
+            { weight: 20, reps: 12, note: '（3组）' },
+            { weight: 22.5, reps: 10 },
+            { weight: 25, reps: 8 },
+            { weight: 27.5, reps: 6 }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '宽距坐姿划船', 
+          sets: [
+            { weight: 17.5, reps: 12, note: '（3组）' },
+            { weight: 20, reps: 10 },
+            { weight: 22.5, reps: 8 },
+            { weight: 25, reps: 6 }
+          ],
+          weightIncrement: 2.5
+        },
+        { 
+          name: '三头下压', 
+          sets: [
+            { weight: 62.5, reps: 8, note: '（3组）' }
+          ],
+          weightIncrement: 2.5
+        }
+      ],
+      // 腿部训练
+      '腿': [
+        { 
+          name: '蹬腿器械',
+          sets: [
+            { weight: 12, reps: 12 },
+            { weight: 13, reps: 10 },
+            { weight: 14, reps: 8, note: '（3组）' },
+            { weight: 15, reps: 6 },
+            { weight: 16, reps: 4 }
+          ],
+          weightIncrement: 1,
+          usePrefix: true
+        },
+        { 
+          name: '后翘腿器械',
+          sets: [
+            { weight: 16, reps: 12 },
+            { weight: 18, reps: 10 },
+            { weight: 20, reps: 8, note: '（3组）' },
+            { weight: 22, reps: 6 }
+          ],
+          weightIncrement: 1
+        },
+        {
+          name: '内收肌',
+          sets: [
+            { reps: 12, note: '（3组）' }
+          ],
+          weightIncrement: 0
+        }
+      ]
+    };
+
+    /*******************************************
+     * 辅助函数：判断 leg 训练日是否跳过（即落在周末）
+     *******************************************/
+    function isLegDayWeekend(cycle, loop) {
+      // leg 训练日固定为每循环第5天
+      const baseDate = new Date(2025, 1, 24);
+      let offset = (cycle - 1) * 45 + (loop - 1) * 9 + (5 - 1);
+      let d = new Date(baseDate);
+      d.setDate(d.getDate() + offset);
+      let wd = d.getDay();
+      return (wd === 0 || wd === 6); // 0: Sunday, 6: Saturday
+    }
+
+    /*******************************************
+     * 完成状态检查函数
+     *******************************************/
+    function isDayCompleted(cycle, loop, day) {
+      let recordKey = "cycle" + cycle + "_loop" + loop + "_day" + day;
+      let exerciseGroup;
+      switch(day) {
+        case 1: exerciseGroup = '肩1'; break;
+        case 2: exerciseGroup = '胸1'; break;
+        case 3: exerciseGroup = '背1'; break;
+        case 4: exerciseGroup = '休息日'; break;
+        case 5: exerciseGroup = '腿'; break;
+        case 6: exerciseGroup = '肩2'; break;
+        case 7: exerciseGroup = '胸2'; break;
+        case 8: exerciseGroup = '休息日'; break;
+        case 9: exerciseGroup = '背2'; break;
+        default: exerciseGroup = '';
+      }
+      let tasks = [];
+      if (exerciseGroup === '肩1') {
+        tasks = baseExercises['肩1'].concat(baseExercises['肩1_rear']);
+      } else {
+        tasks = baseExercises[exerciseGroup] || [];
+      }
+      let taskCount = tasks.length;
+      let record = users[currentUser].records[recordKey] || {};
+      for (let i = 0; i < taskCount; i++) {
+        if (!record[i]) return false;
+      }
+      return taskCount > 0;
+    }
+    function isLoopCompleted(cycle, loop) {
+      for (let day = 1; day <= 9; day++) {
+        if (!isDayCompleted(cycle, loop, day)) return false;
+      }
+      return true;
+    }
+    function isCycleCompleted(cycle) {
+      for (let loop = 1; loop <= 5; loop++) {
+        if (!isLoopCompleted(cycle, loop)) return false;
+      }
+      return true;
+    }
+
+    /*******************************************
+     * 计算单个动作详情
+     *******************************************/
+    function computeExerciseDetails(exercise, cycle, loop, extraMultiplier = 1) {
+      // 背2 - 引体向上
+      if (exercise.dynamicPullup) {
+        let baseRep = exercise.baseReps + 2 * (cycle - 1);
+        if (baseRep > 15) baseRep = 15;
+        let reps;
+        if (loop === 1) reps = baseRep;
+        else if (loop === 2 || loop === 3) reps = baseRep + 1;
+        else if (loop === 4) reps = baseRep + 2;
+        else if (loop === 5) reps = baseRep;
+        if (reps > 15) reps = 15;
+        return reps + "次 * " + exercise.setsCount + "组";
+      }
+      
+      // 对于其它普通动作
+      let repInc = 0;
+      if (loop === 1) repInc = 0;
+      else if (loop === 2 || loop === 3) repInc = 1;
+      else if (loop === 4) repInc = 2;
+      else if (loop === 5) repInc = 0;
+      
+      let details = [];
+      exercise.sets.forEach(set => {
+        let setStr = "";
+        if (set.weight !== undefined) {
+          let newWeight = set.weight + (cycle - 1) * exercise.weightIncrement;
+          if (loop === 5) newWeight = Math.round(newWeight * 0.95 * 10) / 10;
+          if (exercise.usePrefix) {
+            setStr += "N" + newWeight;
+          } else {
+            setStr += newWeight + "kg";
+          }
+        }
+        if (set.reps !== undefined) {
+          let newReps = (set.reps + repInc) * extraMultiplier;
+          newReps = Math.round(newReps);
+          if (loop === 5) newReps = set.reps;
+          setStr += " " + newReps + "次";
+        }
+        if (set.note) setStr += " " + set.note;
+        details.push(setStr);
+      });
+      return details.join(", ");
+    }
+
+    /*******************************************
+     * 更新下拉菜单选项文本（添加星期及“已完成”标记）
+     *******************************************/
+    function updateDropdownOptions() {
+      let cycle = parseInt(document.getElementById('cycleSelect').value);
+      let loopSelect = document.getElementById('loopSelect');
+      let daySelect = document.getElementById('daySelect');
+      const baseDate = new Date(2025, 1, 24);
+      
+      for (let i = 0; i < loopSelect.options.length; i++) {
+        let opt = loopSelect.options[i];
+        let loopVal = parseInt(opt.value);
+        if (isLoopCompleted(cycle, loopVal)) {
+          opt.style.background = '#ccc';
+          opt.style.color = '#666';
+          opt.text = (loopVal === 5 ? "减载周" : "循环" + loopVal) + " （已完成）";
+        } else {
+          opt.style.background = '';
+          opt.style.color = '';
+          opt.text = (loopVal === 5 ? "减载周" : "循环" + loopVal);
+        }
+      }
+      
+      let loop = parseInt(loopSelect.value);
+      const weekdayArr = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+      for (let i = 0; i < daySelect.options.length; i++) {
+        let opt = daySelect.options[i];
+        let dayVal = parseInt(opt.value);
+        let offsetDays = (cycle - 1) * 45 + (loop - 1) * 9 + (dayVal - 1);
+        let trainingDate = new Date(baseDate);
+        trainingDate.setDate(trainingDate.getDate() + offsetDays);
+        let weekdayStr = weekdayArr[trainingDate.getDay()];
+        let originalLabel = dayMapping[i].label;
+        if (isDayCompleted(cycle, loop, dayVal)) {
+          opt.style.background = '#ccc';
+          opt.style.color = '#666';
+          opt.text = "第" + dayVal + "天 (" + originalLabel + ") - " + weekdayStr + " （已完成）";
+        } else {
+          opt.style.background = '';
+          opt.style.color = '';
+          opt.text = "第" + dayVal + "天 (" + originalLabel + ") - " + weekdayStr;
+        }
+      }
+      
+      let cycleSelect = document.getElementById('cycleSelect');
+      for (let i = 0; i < cycleSelect.options.length; i++) {
+        let opt = cycleSelect.options[i];
+        let cycleVal = parseInt(opt.value);
+        if (isCycleCompleted(cycleVal)) {
+          opt.style.background = '#ccc';
+          opt.style.color = '#666';
+          opt.text = "周期" + cycleVal + " （已完成）";
+        } else {
+          opt.style.background = '';
+          opt.style.color = '';
+          opt.text = "周期" + cycleVal;
+        }
+      }
+    }
+
+    /*******************************************
+     * 主函数：根据当前选择的周期、循环和训练日显示任务
+     *******************************************/
+    function updateDashboard() {
+      let cycle = parseInt(document.getElementById('cycleSelect').value);
+      let loop = parseInt(document.getElementById('loopSelect').value);
+      let day = parseInt(document.getElementById('daySelect').value);
+      
+      let exerciseGroup = dayMapping[day - 1].label;
+      let baseDate = new Date(2025, 1, 24);
+      let offsetDays = (cycle - 1) * 45 + (loop - 1) * 9 + (day - 1);
+      let trainingDate = new Date(baseDate);
+      trainingDate.setDate(trainingDate.getDate() + offsetDays);
+      const weekdayArr = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+      let dateStr = trainingDate.getFullYear() + "-" + (trainingDate.getMonth() + 1) + "-" + trainingDate.getDate();
+      let weekdayStr = weekdayArr[trainingDate.getDay()];
+      document.getElementById('dateDisplay').innerText = "训练日期：" + dateStr + " " + weekdayStr + " （" + exerciseGroup + "）";
+      
+      updateDropdownOptions();
+      
+      let taskListDiv = document.getElementById('taskList');
+      taskListDiv.innerHTML = '';
+      
+      // 针对腿部训练的特殊处理
+      if (exerciseGroup === '腿') {
+        if (weekdayStr === "星期六" || weekdayStr === "星期日") {
+          taskListDiv.innerHTML = "<div class='task'><strong>腿：</strong> 本日为周末，任务已转移</div>";
+          return;
+        } else {
+          let missedLoop = null;
+          for (let L = loop - 1; L >= 1; L--) {
+            if (isLegDayWeekend(cycle, L)) {
+              missedLoop = L;
+              break;
+            }
+          }
+          if (missedLoop !== null) {
+            displayTasks("腿", cycle, missedLoop);
+            return;
+          }
+        }
+      }
+      
+      displayTasks(exerciseGroup, cycle, loop);
+    }
+
+    // 根据指定组别、周期和循环显示任务
+    function displayTasks(group, cycle, loopForCalc) {
+      let recordKey = "cycle" + cycle + "_loop" + loopForCalc + "_day";
+      let day = (group === '腿') ? 5 : parseInt(document.getElementById('daySelect').value);
+      recordKey += day;
+      if (!users[currentUser].records[recordKey]) {
+        users[currentUser].records[recordKey] = {};
+      }
+      
+      let tasks = [];
+      if (group === '肩1') {
+        tasks = baseExercises['肩1'].concat(baseExercises['肩1_rear']);
+      } else {
+        tasks = baseExercises[group] || [];
+      }
+      
+      tasks.forEach((task, index) => {
+        let taskDiv = document.createElement('div');
+        taskDiv.className = 'task';
+        let completed = users[currentUser].records[recordKey][index];
+        if (completed) taskDiv.classList.add('completed');
+        let details = computeExerciseDetails(task, cycle, loopForCalc);
+        taskDiv.innerHTML = "<strong>" + task.name + ":</strong> " + details;
+        if (task.name !== "休息日") {
+          let btn = document.createElement('button');
+          btn.innerText = completed ? "已完成" : "完成";
+          btn.disabled = completed;
+          btn.onclick = function() {
+            users[currentUser].records[recordKey][index] = true;
+            saveUsers();
+            updateDashboard();
+          };
+          taskDiv.appendChild(btn);
+        }
+        let taskListDiv = document.getElementById('taskList');
+        taskListDiv.appendChild(taskDiv);
+      });
+      saveUsers();
+    }
+
+    function onCycleOrLoopChange() {
+      updateDropdownOptions();
+      updateDashboard();
+    }
+  </script>
+</body>
+</html>
